@@ -255,6 +255,79 @@
             </div>
         </section>
 
+        <!-- Section 5: Qualitative Analysis Report -->
+        <section id="analysis-report" class="section">
+            <div class="section-header">
+                <h2>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="22" height="22" style="vertical-align:middle;margin-right:6px;color:var(--accent-warm)">
+                        <path d="M21 21l-6-6m2-5a7 7 0 1 1-14 0 7 7 0 0 1 14 0z"/>
+                    </svg>
+                    定性分析レポート
+                </h2>
+                <p class="section-desc">取り込んだ回答データから傾向・フィードバック・改善提案を自動生成します</p>
+            </div>
+            <div class="analysis-actions">
+                <button id="run-analysis-btn" class="btn btn-primary btn-analysis">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                    分析を実行
+                </button>
+                <span id="analysis-status" class="analysis-status"></span>
+            </div>
+
+            <!-- Analysis Result Panels -->
+            <div id="analysis-panels" class="analysis-panels hidden">
+
+                <!-- Panel 1: Trend Analysis -->
+                <div class="analysis-card">
+                    <div class="analysis-card-header">
+                        <span class="analysis-card-icon" style="background:rgba(96,165,250,0.15);color:var(--accent-blue)">📊</span>
+                        <h3>傾向分析</h3>
+                    </div>
+                    <div class="analysis-card-body">
+                        <div class="trend-grid">
+                            <div class="trend-block">
+                                <h4>🔤 キーワード頻度 TOP10</h4>
+                                <canvas id="keyword-chart" width="480" height="220"></canvas>
+                            </div>
+                            <div class="trend-block">
+                                <h4>💭 カテゴリ別 感情マップ</h4>
+                                <div id="sentiment-map" class="sentiment-map"></div>
+                            </div>
+                        </div>
+                        <div class="trend-block" style="margin-top:16px">
+                            <h4>📈 コントロール感の分布</h4>
+                            <div class="control-dist-grid">
+                                <canvas id="control-dist-chart" width="300" height="160"></canvas>
+                                <div id="control-stats" class="control-stats"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Panel 2: Key Findings / Feedback -->
+                <div class="analysis-card">
+                    <div class="analysis-card-header">
+                        <span class="analysis-card-icon" style="background:rgba(52,211,153,0.15);color:var(--accent-emerald)">💬</span>
+                        <h3>フィードバック抽出</h3>
+                    </div>
+                    <div class="analysis-card-body">
+                        <div id="feedback-list" class="feedback-list"></div>
+                    </div>
+                </div>
+
+                <!-- Panel 3: Design Recommendations -->
+                <div class="analysis-card">
+                    <div class="analysis-card-header">
+                        <span class="analysis-card-icon" style="background:rgba(251,191,36,0.15);color:var(--accent-warm)">💡</span>
+                        <h3>改善提案</h3>
+                    </div>
+                    <div class="analysis-card-body">
+                        <div id="recommendations-list" class="recommendations-list"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- Section 5: Export -->
         <section id="export-section" class="section section-compact">
             <button id="export-btn" class="btn btn-export">
@@ -273,6 +346,6 @@
         <p>感性情報学 第4回課題 — 冬環境における「見える安心（Visible Safety）」の探究</p>
     </footer>
 
-    <script src="app.js?v=3"></script>
+    <script src="app.js?v=4"></script>
 </body>
 </html>

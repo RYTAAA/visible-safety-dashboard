@@ -167,6 +167,9 @@ function bindEvents() {
     rangeInput.addEventListener('input', () => { scoreDisplay.textContent = rangeInput.value; });
     document.getElementById('add-control-score').addEventListener('click', addControlScore);
 
+    // Analysis
+    document.getElementById('run-analysis-btn').addEventListener('click', runAnalysis);
+
     // Export
     document.getElementById('export-btn').addEventListener('click', exportData);
 
@@ -543,4 +546,286 @@ function escapeHtml(str) {
     const div = document.createElement('div');
     div.textContent = str;
     return div.innerHTML;
+}
+
+/* ========================================
+   QUALITATIVE ANALYSIS ENGINE
+   ======================================== */
+
+const DICTIONARY = {
+    positive: ['安心','温かい','穏やか','リラックス','自然','ほっとする','優しい','柔らかい','落ち着く','心地よい','守られ','見守','快適','好き','良い','いい','素敵','きれい','美しい','嬉しい','楽しい','安全','信頼','自由','選べる','選んで'],
+    negative: ['怖い','不安','暗い','危険','嫌','監視','管理','強制','圧迫','うるさい','邪魔','違和感','気持ち悪い','冷たい','寒い','滑','転','痛い','恐','心配','緊張','ストレス','追われ','見られ'],
+    perception: ['光','色','明る','暗','オレンジ','電球','白','ぼんやり','くっきり','眩','影','輝','照','反射','温かみ','暖色','寒色'],
+    control: ['自分で','選','コントロール','自由','自律','主体','押し付け','強制','誘導','管理','監視','指示','命令','従'],
+    design: ['さりげな','自然','境界','ぼかし','グラデーション','帯','ルート','投影','プロジェクション','街灯','LED','センサー']
+};
+
+function runAnalysis() {
+    if (state.responses.length === 0 && state.controlScores.length === 0) {
+        document.getElementById('analysis-status').textContent = '⚠️ 先にデータを取り込んでください';
+        return;
+    }
+    document.getElementById('analysis-status').textContent = '✅ 分析完了';
+    document.getElementById('analysis-panels').classList.remove('hidden');
+    renderKeywordChart();
+    renderSentimentMap();
+    renderControlDistChart();
+    renderFeedback();
+    renderRecommendations();
+}
+
+/* ----- Keyword Frequency Chart ----- */
+function renderKeywordChart() {
+    const allText = state.responses.map(r => r.text).join(' ');
+    const freq = {};
+    // Count dictionary words
+    [...DICTIONARY.positive, ...DICTIONARY.negative, ...DICTIONARY.perception, ...DICTIONARY.design, ...DICTIONARY.control].forEach(w => {
+        const re = new RegExp(w, 'gi');
+        const m = allText.match(re);
+        if (m && m.length > 0) freq[w] = (freq[w] || 0) + m.length;
+    });
+    const sorted = Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    if (sorted.length === 0) return;
+
+    const canvas = document.getElementById('keyword-chart');
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = canvas.offsetWidth * dpr;
+    canvas.height = 220 * dpr;
+    ctx.scale(dpr, dpr);
+    const W = canvas.offsetWidth, H = 220;
+    ctx.clearRect(0, 0, W, H);
+
+    const maxVal = sorted[0][1];
+    const barH = 16, gap = 6, leftPad = 90, rightPad = 40;
+    const barArea = W - leftPad - rightPad;
+
+    sorted.forEach(([word, count], i) => {
+        const y = 10 + i * (barH + gap);
+        const bw = (count / maxVal) * barArea;
+        // Label
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText(word, leftPad - 8, y + barH - 3);
+        // Bar
+        const isPos = DICTIONARY.positive.includes(word);
+        const isNeg = DICTIONARY.negative.includes(word);
+        ctx.fillStyle = isNeg ? 'rgba(251,113,133,0.7)' : isPos ? 'rgba(52,211,153,0.7)' : 'rgba(251,191,36,0.5)';
+        ctx.beginPath();
+        ctx.roundRect(leftPad, y, bw, barH, 3);
+        ctx.fill();
+        // Count
+        ctx.fillStyle = '#f1f5f9';
+        ctx.textAlign = 'left';
+        ctx.fillText(count, leftPad + bw + 6, y + barH - 3);
+    });
+}
+
+/* ----- Sentiment Map ----- */
+function renderSentimentMap() {
+    const container = document.getElementById('sentiment-map');
+    const categories = ['perception', 'cognition', 'emotion', 'behavior'];
+    const labels = { perception: '知覚', cognition: '認知', emotion: '感情', behavior: '行動' };
+    let html = '';
+
+    categories.forEach(cat => {
+        const items = state.responses.filter(r => r.category === cat);
+        if (items.length === 0) { html += `<div class="sentiment-row"><span class="sentiment-label">${labels[cat]}</span><span class="sentiment-pct" style="flex:1;text-align:left">データなし</span></div>`; return; }
+        let pos = 0, neg = 0, neu = 0;
+        items.forEach(r => {
+            const t = r.text;
+            const pHit = DICTIONARY.positive.some(w => t.includes(w));
+            const nHit = DICTIONARY.negative.some(w => t.includes(w));
+            if (pHit && !nHit) pos++;
+            else if (nHit && !pHit) neg++;
+            else if (pHit && nHit) { pos += 0.5; neg += 0.5; }
+            else neu++;
+        });
+        const total = pos + neg + neu;
+        const pP = Math.round(pos / total * 100), nP = Math.round(neg / total * 100), uP = 100 - pP - nP;
+        html += `<div class="sentiment-row">
+            <span class="sentiment-label">${labels[cat]}</span>
+            <div class="sentiment-bar-track">
+                <div class="sentiment-bar-pos" style="width:${pP}%"></div>
+                <div class="sentiment-bar-neg" style="width:${nP}%"></div>
+                <div class="sentiment-bar-neu" style="width:${uP}%"></div>
+            </div>
+            <span class="sentiment-pct">＋${pP}% −${nP}%</span>
+        </div>`;
+    });
+    container.innerHTML = html;
+}
+
+/* ----- Control Distribution Chart ----- */
+function renderControlDistChart() {
+    const scores = state.controlScores.map(s => s.score);
+    if (scores.length === 0) return;
+    const dist = [0, 0, 0, 0, 0];
+    scores.forEach(s => dist[s - 1]++);
+    const avg = scores.reduce((a, b) => a + b, 0) / scores.length;
+    const sorted = [...scores].sort((a, b) => a - b);
+    const median = sorted.length % 2 === 0 ? (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2 : sorted[Math.floor(sorted.length / 2)];
+    const variance = scores.reduce((s, v) => s + (v - avg) ** 2, 0) / scores.length;
+    const stdDev = Math.sqrt(variance);
+
+    // Chart
+    const canvas = document.getElementById('control-dist-chart');
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = canvas.offsetWidth * dpr;
+    canvas.height = 160 * dpr;
+    ctx.scale(dpr, dpr);
+    const W = canvas.offsetWidth, H = 160;
+    ctx.clearRect(0, 0, W, H);
+    const maxD = Math.max(...dist, 1);
+    const barW = W / 7, pad = barW;
+    const colors = ['rgba(251,113,133,0.7)', 'rgba(251,113,133,0.4)', 'rgba(251,191,36,0.5)', 'rgba(52,211,153,0.4)', 'rgba(52,211,153,0.7)'];
+
+    dist.forEach((d, i) => {
+        const x = pad + i * (barW + 8);
+        const bh = (d / maxD) * (H - 40);
+        ctx.fillStyle = colors[i];
+        ctx.beginPath();
+        ctx.roundRect(x, H - 20 - bh, barW, bh, 4);
+        ctx.fill();
+        ctx.fillStyle = '#f1f5f9';
+        ctx.font = 'bold 13px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(d, x + barW / 2, H - 24 - bh);
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '11px sans-serif';
+        ctx.fillText(i + 1, x + barW / 2, H - 4);
+    });
+
+    // Stats
+    document.getElementById('control-stats').innerHTML = `
+        <div class="stat-row"><span class="stat-label">回答数</span><span class="stat-value">${scores.length}</span></div>
+        <div class="stat-row"><span class="stat-label">平均値</span><span class="stat-value">${avg.toFixed(2)}</span></div>
+        <div class="stat-row"><span class="stat-label">中央値</span><span class="stat-value">${median.toFixed(1)}</span></div>
+        <div class="stat-row"><span class="stat-label">標準偏差</span><span class="stat-value">${stdDev.toFixed(2)}</span></div>
+        <div class="stat-row"><span class="stat-label">最小–最大</span><span class="stat-value">${Math.min(...scores)} – ${Math.max(...scores)}</span></div>
+    `;
+}
+
+/* ----- Feedback Extraction ----- */
+function renderFeedback() {
+    const container = document.getElementById('feedback-list');
+    const items = [];
+
+    state.responses.forEach(r => {
+        const t = r.text;
+        const pHit = DICTIONARY.positive.filter(w => t.includes(w));
+        const nHit = DICTIONARY.negative.filter(w => t.includes(w));
+
+        if (nHit.length > 0 && pHit.length === 0) {
+            items.push({ type: 'negative', icon: '🔴', label: '警告フィードバック', cssType: 'neg', text: t, respondent: r.respondent, category: r.category, keywords: nHit, priority: 2 });
+        }
+        if (pHit.length > 0 && nHit.length === 0) {
+            items.push({ type: 'positive', icon: '🟢', label: '肯定フィードバック', cssType: 'pos', text: t, respondent: r.respondent, category: r.category, keywords: pHit, priority: 1 });
+        }
+        if (pHit.length > 0 && nHit.length > 0) {
+            items.push({ type: 'conflict', icon: '⚡', label: '矛盾・葛藤', cssType: 'conflict', text: t, respondent: r.respondent, category: r.category, keywords: [...pHit, ...nHit], priority: 3 });
+        }
+    });
+
+    // Representative quotes (longest per category)
+    const cats = ['perception', 'cognition', 'emotion', 'behavior'];
+    const catLabels = { perception: '知覚', cognition: '認知', emotion: '感情', behavior: '行動' };
+    cats.forEach(cat => {
+        const catResponses = state.responses.filter(r => r.category === cat);
+        if (catResponses.length === 0) return;
+        const longest = catResponses.reduce((a, b) => a.text.length > b.text.length ? a : b);
+        if (longest.text.length > 10) {
+            items.push({ type: 'representative', icon: '💬', label: `代表的な声（${catLabels[cat]}）`, cssType: 'rep', text: longest.text, respondent: longest.respondent, category: cat, keywords: [], priority: 0 });
+        }
+    });
+
+    items.sort((a, b) => b.priority - a.priority);
+
+    if (items.length === 0) {
+        container.innerHTML = '<div class="analysis-empty">フィードバックの抽出にはより多くの回答データが必要です</div>';
+        return;
+    }
+
+    container.innerHTML = items.map(fb => `
+        <div class="feedback-item fb-${fb.type}">
+            <span class="feedback-icon">${fb.icon}</span>
+            <div class="feedback-body">
+                <div class="feedback-type feedback-type-${fb.cssType}">${fb.label}</div>
+                <div class="feedback-quote">${escapeHtml(fb.text)}</div>
+                <div class="feedback-meta">
+                    回答者: ${escapeHtml(fb.respondent)}
+                    ${fb.keywords.length > 0 ? ' — キーワード: ' + fb.keywords.map(k => `<strong>${escapeHtml(k)}</strong>`).join(', ') : ''}
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+/* ----- Design Recommendations ----- */
+function renderRecommendations() {
+    const container = document.getElementById('recommendations-list');
+    const recs = [];
+    const allText = state.responses.map(r => r.text).join(' ');
+    const scores = state.controlScores.map(s => s.score);
+    const avg = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 3;
+    const totalResponses = state.responses.length;
+
+    const countWord = (w) => (allText.match(new RegExp(w, 'g')) || []).length;
+    const countWords = (arr) => arr.reduce((s, w) => s + countWord(w), 0);
+    const negInPerception = state.responses.filter(r => r.category === 'perception' && DICTIONARY.negative.some(w => r.text.includes(w))).length;
+    const negInCognition = state.responses.filter(r => r.category === 'cognition' && DICTIONARY.negative.some(w => r.text.includes(w))).length;
+
+    // Rule 1: Low control sense
+    if (avg < 2.5 && scores.length > 0) {
+        recs.push({ icon: '⚠️', title: '光の帯の「強制感」を軽減する', desc: 'コントロール感の平均が低く、ユーザーが「管理されている」と感じている可能性があります。光の帯の境界をより曖昧にし、ルートを「提案」に留める表現に変更することを検討してください。', evidence: `コントロール感平均: ${avg.toFixed(1)} / 5.0`, priority: 'high' });
+    }
+    // Rule 2: High control - positive
+    if (avg >= 4.0 && scores.length > 0) {
+        recs.push({ icon: '✅', title: 'コントロール感は良好', desc: '回答者は自律的な選択感を感じており、「さりげない」デザインが機能しています。この方向性を維持することが推奨されます。', evidence: `コントロール感平均: ${avg.toFixed(1)} / 5.0`, priority: 'low' });
+    }
+    // Rule 3: Brightness concerns
+    if (countWords(['明るすぎ', '眩', 'まぶし', '眩しい']) > 0) {
+        recs.push({ icon: '💡', title: '光の輝度を下げる', desc: '「明るすぎる」「眩しい」という指摘があります。光の輝度を下げ、より間接的な照明効果にすることで「さりげなさ」を向上できる可能性があります。', evidence: `関連キーワード出現: ${countWords(['明るすぎ', '眩', 'まぶし'])}回`, priority: 'high' });
+    }
+    // Rule 4: Surveillance concern
+    if (countWords(['監視', '見られ', '追われ', 'カメラ']) > 0) {
+        recs.push({ icon: '🔴', title: '監視感の払拭が必要', desc: '「監視されている」「見られている」という感覚を報告した回答者がいます。センサーの存在を隠す、または光の反応を遅延させてリアルタイム追跡感を軽減することを検討してください。', evidence: `監視関連語の出現: ${countWords(['監視', '見られ', '追われ', 'カメラ'])}回`, priority: 'high' });
+    }
+    // Rule 5: Negative perception focus
+    if (negInPerception > totalResponses * 0.3 && totalResponses > 0) {
+        recs.push({ icon: '🎨', title: '色温度・拡散範囲の調整', desc: '知覚カテゴリにネガティブな反応が集中しています。色温度や光の拡散範囲を調整し、視覚的な圧迫感を軽減することが有効です。', evidence: `知覚カテゴリのネガティブ回答: ${negInPerception}件 / ${totalResponses}件`, priority: 'mid' });
+    }
+    // Rule 6: Fear/anxiety in cognition
+    if (negInCognition > 0) {
+        recs.push({ icon: '🧠', title: '現状の不安要因への対応', desc: '認知カテゴリに不安や恐怖に関する回答があります。これは光のデザインが対処すべき「問題」の存在を示しており、デザインの必要性を裏付けるエビデンスです。', evidence: `認知カテゴリのネガティブ回答: ${negInCognition}件`, priority: 'mid' });
+    }
+    // Rule 7: Warmth is working
+    if (countWords(['温かい', '温かみ', '暖かい', 'あたたかい']) >= 2) {
+        recs.push({ icon: '🌡️', title: '「温かさ」のイメージは成功', desc: '複数の回答者が「温かい」というキーワードを使用しており、デザインの意図する温かみの知覚が成立しています。', evidence: `「温かい」関連語: ${countWords(['温かい', '温かみ', '暖かい', 'あたたかい'])}回出現`, priority: 'low' });
+    }
+    // Rule 8: Behavioral change detected
+    const behaviorResponses = state.responses.filter(r => r.category === 'behavior');
+    if (behaviorResponses.length > 0 && behaviorResponses.some(r => DICTIONARY.positive.some(w => r.text.includes(w)))) {
+        recs.push({ icon: '🚶', title: 'ポジティブな行動変容を確認', desc: '行動カテゴリにポジティブな変化（歩き方の改善、視線の変化など）が報告されています。光のデザインがユーザーの行動に好影響を与えている可能性があります。', evidence: `行動カテゴリの回答: ${behaviorResponses.length}件`, priority: 'low' });
+    }
+
+    if (recs.length === 0) {
+        container.innerHTML = '<div class="analysis-empty">改善提案の生成にはより多くの回答データが必要です</div>';
+        return;
+    }
+
+    recs.sort((a, b) => { const o = { high: 3, mid: 2, low: 1 }; return o[b.priority] - o[a.priority]; });
+
+    container.innerHTML = recs.map(r => `
+        <div class="rec-item rec-priority-${r.priority}">
+            <span class="rec-icon">${r.icon}</span>
+            <div class="rec-body">
+                <div class="rec-title">${escapeHtml(r.title)}</div>
+                <div class="rec-desc">${escapeHtml(r.desc)}</div>
+                <div class="rec-evidence">📎 ${escapeHtml(r.evidence)}</div>
+            </div>
+        </div>
+    `).join('');
 }
