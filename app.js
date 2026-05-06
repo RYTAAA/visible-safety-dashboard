@@ -285,28 +285,48 @@ function getCategoryLabel(cat) {
 }
 
 function parseDelimited(text, delimiter) {
-    const lines = text.split('\n');
-    return lines.filter(line => line.trim()).map(line => {
-        // Handle quoted fields (for CSV with commas in values)
-        if (delimiter === ',') {
-            const result = [];
-            let current = '';
-            let inQuotes = false;
-            for (let i = 0; i < line.length; i++) {
-                const ch = line[i];
-                if (ch === '"') {
-                    inQuotes = !inQuotes;
-                } else if (ch === delimiter && !inQuotes) {
-                    result.push(current.trim());
-                    current = '';
-                } else {
-                    current += ch;
-                }
-            }
-            result.push(current.trim());
-            return result;
+    // Step 1: Split text into logical rows, respecting quoted fields with newlines
+    const rows = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        if (ch === '"') {
+            inQuotes = !inQuotes;
+            current += ch;
+        } else if ((ch === '\n' || ch === '\r') && !inQuotes) {
+            // End of logical row
+            if (ch === '\r' && text[i + 1] === '\n') i++; // skip \r\n
+            if (current.trim()) rows.push(current);
+            current = '';
+        } else {
+            current += ch;
         }
-        return line.split(delimiter);
+    }
+    if (current.trim()) rows.push(current);
+
+    // Step 2: Split each logical row into fields
+    return rows.map(row => {
+        const fields = [];
+        let field = '';
+        let q = false;
+        for (let i = 0; i < row.length; i++) {
+            const ch = row[i];
+            if (ch === '"') {
+                if (q && row[i + 1] === '"') {
+                    field += '"'; i++; // escaped quote
+                } else {
+                    q = !q;
+                }
+            } else if (ch === delimiter && !q) {
+                fields.push(field.trim());
+                field = '';
+            } else {
+                field += ch;
+            }
+        }
+        fields.push(field.trim());
+        return fields;
     });
 }
 
