@@ -572,6 +572,7 @@ function runAnalysis() {
     renderControlDistChart();
     renderFeedback();
     renderRecommendations();
+    renderInsight();
 }
 
 /* ----- Keyword Frequency Chart ----- */
@@ -828,4 +829,113 @@ function renderRecommendations() {
             </div>
         </div>
     `).join('');
+}
+
+/* ----- AI Insight (Overall Commentary) ----- */
+function renderInsight() {
+    const container = document.getElementById('insight-content');
+    const allText = state.responses.map(r => r.text).join(' ');
+    const scores = state.controlScores.map(s => s.score);
+    const avg = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
+    const total = state.responses.length;
+    const catCounts = { perception: 0, cognition: 0, emotion: 0, behavior: 0 };
+    const catPos = { perception: 0, cognition: 0, emotion: 0, behavior: 0 };
+    const catNeg = { perception: 0, cognition: 0, emotion: 0, behavior: 0 };
+
+    state.responses.forEach(r => {
+        if (catCounts[r.category] !== undefined) catCounts[r.category]++;
+        const p = DICTIONARY.positive.some(w => r.text.includes(w));
+        const n = DICTIONARY.negative.some(w => r.text.includes(w));
+        if (p) catPos[r.category]++;
+        if (n) catNeg[r.category]++;
+    });
+
+    const totalPos = Object.values(catPos).reduce((a, b) => a + b, 0);
+    const totalNeg = Object.values(catNeg).reduce((a, b) => a + b, 0);
+    const posRate = total > 0 ? Math.round(totalPos / total * 100) : 0;
+    const negRate = total > 0 ? Math.round(totalNeg / total * 100) : 0;
+    const respondentCount = new Set(state.responses.map(r => r.respondent)).size;
+
+    // --- Section 1: Overview ---
+    let overview = '';
+    if (total === 0) {
+        overview = 'データが不足しているため、総合的な評価を行うことができません。';
+    } else {
+        const tone = posRate > negRate + 20 ? 'ポジティブな傾向が顕著' : negRate > posRate + 20 ? 'ネガティブな反応が目立つ' : 'ポジティブとネガティブが混在した';
+        overview = `${respondentCount}名の回答者から得られた${total}件の回答データを分析した結果、全体として<strong>${tone}</strong>であることが確認されました。`;
+        overview += ` ポジティブ語を含む回答は${posRate}%、ネガティブ語を含む回答は${negRate}%でした。`;
+        if (avg !== null) {
+            const controlLabel = avg >= 4.0 ? '高い自律感を示しており、デザインの「さりげなさ」が機能している' : avg <= 2.0 ? '管理されている感覚が強く、デザインの見直しが急務である' : avg <= 2.9 ? 'やや管理感に傾いており、改善の余地がある' : 'バランスの取れた状態にある';
+            overview += `コントロール感の平均スコアは<strong>${avg.toFixed(1)}</strong>であり、${controlLabel}と評価できます。`;
+        }
+    }
+
+    // --- Section 2: Causal Model Verification ---
+    const catLabels = { perception: '知覚', cognition: '認知', emotion: '感情', behavior: '行動' };
+    const stages = ['perception', 'cognition', 'emotion', 'behavior'];
+    const supported = stages.filter(c => catCounts[c] >= 2);
+    const weak = stages.filter(c => catCounts[c] === 0);
+    const partial = stages.filter(c => catCounts[c] === 1);
+
+    let causal = '因果フロー（デザイン → 知覚 → 認知 → 感情 → 行動）の検証状況：';
+    if (supported.length === 4) {
+        causal += '全4段階でデータが確認されており、因果モデルの各接続が一定の裏付けを持っています。';
+    } else {
+        if (supported.length > 0) causal += `<strong>${supported.map(c => catLabels[c]).join('・')}</strong>の段階は十分なデータで裏付けられています。`;
+        if (partial.length > 0) causal += `${partial.map(c => catLabels[c]).join('・')}はデータが1件のみで、さらなる収集が推奨されます。`;
+        if (weak.length > 0) causal += `<strong>${weak.map(c => catLabels[c]).join('・')}</strong>にはデータがなく、因果フローのこの部分は未検証の状態です。`;
+    }
+    // Check flow coherence
+    const flowCoherent = catPos.perception > 0 && catPos.emotion > 0;
+    if (flowCoherent) {
+        causal += ' 知覚段階のポジティブ評価が感情段階の安心感に接続しており、「光の温かみ → 安心」の因果経路が示唆されます。';
+    }
+
+    // --- Section 3: Risks & Warnings ---
+    const risks = [];
+    if (totalNeg > 0) {
+        const negCats = stages.filter(c => catNeg[c] > 0).map(c => `${catLabels[c]}(${catNeg[c]}件)`);
+        risks.push(`ネガティブ回答が${negCats.join('、')}に検出されました。`);
+    }
+    const conflictCount = state.responses.filter(r => {
+        const p = DICTIONARY.positive.some(w => r.text.includes(w));
+        const n = DICTIONARY.negative.some(w => r.text.includes(w));
+        return p && n;
+    }).length;
+    if (conflictCount > 0) risks.push(`${conflictCount}件の回答でポジティブとネガティブの両方が含まれる「葛藤」が見られます。これは光のデザインが複合的な感情を喚起している可能性を示します。`);
+    if (avg !== null && avg < 3.0) risks.push('コントロール感スコアが中央値を下回っており、ユーザーが「選ばされている」感覚を覚えている可能性があります。');
+    if (scores.length > 1) {
+        const stdDev = Math.sqrt(scores.reduce((s, v) => s + (v - avg) ** 2, 0) / scores.length);
+        if (stdDev > 1.2) risks.push(`スコアのばらつきが大きく（σ=${stdDev.toFixed(2)}）、回答者間で受け取り方に大きな個人差があります。`);
+    }
+    const riskText = risks.length > 0 ? risks.join(' ') : '現時点で重大なリスクや懸念は検出されていません。デザインコンセプトは概ね好意的に受け止められています。';
+
+    // --- Section 4: Next Actions ---
+    const actions = [];
+    if (weak.length > 0) actions.push(`${weak.map(c => catLabels[c]).join('・')}カテゴリのデータを追加収集し、因果フローの空白を埋めることを推奨します。`);
+    if (respondentCount < 5) actions.push(`現在の回答者数は${respondentCount}名です。統計的な信頼性を高めるため、最低5名以上の回答を目指してください。`);
+    if (totalNeg > totalPos && total > 0) actions.push('ネガティブ回答がポジティブを上回っています。デザインの根本的な見直し、特に光の強度や色温度の再検討を行ってから再調査することを推奨します。');
+    if (avg !== null && avg >= 3.0 && avg < 4.0) actions.push('コントロール感をさらに改善するため、光の帯の「グラデーション境界」をより曖昧にし、選択の自由度を強調するデザイン修正を試みてください。');
+    if (actions.length === 0) actions.push('現在のデータは良好な傾向を示しています。このままの方向性で調査を継続し、サンプル数を増やしてエビデンスを強化してください。');
+    const actionText = actions.join(' ');
+
+    // --- Render ---
+    container.innerHTML = `
+        <div class="insight-section sec-overview">
+            <div class="insight-section-title">📋 総評</div>
+            <p>${overview}</p>
+        </div>
+        <div class="insight-section sec-causal">
+            <div class="insight-section-title">🔗 因果モデルの検証</div>
+            <p>${causal}</p>
+        </div>
+        <div class="insight-section sec-risk">
+            <div class="insight-section-title">⚠️ 注意点・リスク</div>
+            <p>${riskText}</p>
+        </div>
+        <div class="insight-section sec-action">
+            <div class="insight-section-title">🚀 次のアクション</div>
+            <p>${actionText}</p>
+        </div>
+    `;
 }

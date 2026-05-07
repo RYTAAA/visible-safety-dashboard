@@ -534,6 +534,45 @@ select { cursor: pointer; appearance: none; }
     color: var(--text-muted); font-size: 0.88rem;
 }
 
+/* ===== AI Insight Panel ===== */
+.insight-card {
+    border: 1px solid rgba(167,139,250,0.3);
+    background: linear-gradient(145deg, rgba(26,32,53,0.95), rgba(17,24,39,0.98));
+    position: relative;
+    overflow: visible;
+}
+.insight-card::before {
+    content: '';
+    position: absolute; top: -1px; left: -1px; right: -1px;
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent-violet), var(--accent-warm), var(--accent-emerald));
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+.insight-badge {
+    font-size: 0.65rem; font-weight: 600;
+    padding: 3px 10px; border-radius: 20px;
+    background: rgba(167,139,250,0.15); color: var(--accent-violet);
+    margin-left: auto;
+}
+.insight-content { display: flex; flex-direction: column; gap: 16px; }
+.insight-section {
+    padding: 16px 18px;
+    background: var(--bg-card);
+    border-radius: var(--radius-sm);
+    border-left: 3px solid var(--border);
+}
+.insight-section-title {
+    font-size: 0.78rem; font-weight: 600; margin-bottom: 8px;
+    display: flex; align-items: center; gap: 8px;
+}
+.insight-section p {
+    font-size: 0.84rem; line-height: 1.8; color: var(--text-secondary);
+}
+.insight-section.sec-overview { border-left-color: var(--accent-violet); }
+.insight-section.sec-causal { border-left-color: var(--accent-blue); }
+.insight-section.sec-risk { border-left-color: var(--accent-rose); }
+.insight-section.sec-action { border-left-color: var(--accent-emerald); }
+
 /* ===== Footer ===== */
 #app-footer {
     text-align: center; padding: 24px;
